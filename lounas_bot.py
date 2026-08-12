@@ -21,6 +21,7 @@ FINNISH_WEEKDAYS = {
 }
 
 JUUSTOPORTTI_URL = "https://www.juustoportti.fi/liikenneasema/juustoportti-ylojarvi/"
+AITOLEIPA_URL = "https://aitoleipa.fi/toimipiste/ylojarvi/"
 
 REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (lounas-botti)"}
 
@@ -63,6 +64,41 @@ def scrape_juustoportti(today: datetime.date | None = None) -> list[str]:
     return items
 
 
+def scrape_aitoleipa(today: datetime.date | None = None) -> list[str]:
+    """Return today's Aitoleipä Ylöjärvi lunch items as a list of strings."""
+    weekday_name = _today_weekday_name(today)
+
+    response = requests.get(AITOLEIPA_URL, headers=REQUEST_HEADERS, timeout=15)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    for day_el in soup.select("div.lounas-item"):
+        title_el = day_el.select_one(".lounas-day-title")
+        if title_el is None or title_el.get_text(strip=True) != weekday_name:
+            continue
+
+        content = day_el.select_one(".lounas-content-inner")
+        if content is None:
+            return []
+
+        items: list[str] = []
+        for p in content.find_all("p", recursive=False):
+            strong = p.find("strong")
+            em = p.find("em")
+            if strong is not None:
+                items.append(strong.get_text(strip=True))
+            elif em is not None and items:
+                items[-1] = f"{items[-1]} – {em.get_text(strip=True)}"
+        return items
+
+    return []
+
+
 if __name__ == "__main__":
+    print("Juustoportti Ylöjärvi:")
     for item in scrape_juustoportti():
+        print(f"- {item}")
+
+    print("\nAitoleipä Ylöjärvi:")
+    for item in scrape_aitoleipa():
         print(f"- {item}")
