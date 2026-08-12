@@ -1,4 +1,4 @@
-# Claude-specific / planning files — never commit these
+# Claude-specific
 .claude-notes/
 
 # Python
@@ -7,3 +7,6 @@ __pycache__/
 .venv/
 venv/
 .env
+
+# test files
+out.txt

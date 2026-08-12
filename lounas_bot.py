@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 
 import requests
 from bs4 import BeautifulSoup
@@ -18,6 +19,17 @@ FINNISH_WEEKDAYS = {
     4: "Perjantai",
     5: "Lauantai",
     6: "Sunnuntai",
+}
+
+# Essive case ("on Wednesday" = "keskiviikkona"), used in the message intro.
+FINNISH_WEEKDAYS_ESSIVE = {
+    0: "maanantaina",
+    1: "tiistaina",
+    2: "keskiviikkona",
+    3: "torstaina",
+    4: "perjantaina",
+    5: "lauantaina",
+    6: "sunnuntaina",
 }
 
 JUUSTOPORTTI_URL = "https://www.juustoportti.fi/liikenneasema/juustoportti-ylojarvi/"
@@ -94,11 +106,36 @@ def scrape_aitoleipa(today: datetime.date | None = None) -> list[str]:
     return []
 
 
-if __name__ == "__main__":
-    print("Juustoportti Ylöjärvi:")
-    for item in scrape_juustoportti():
-        print(f"- {item}")
+def format_teams_message(
+    sections: list[tuple[str, list[str]]],
+    today: datetime.date | None = None,
+) -> dict:
+    """Combine one or more (restaurant name, items) sections into a Teams payload.
 
-    print("\nAitoleipä Ylöjärvi:")
-    for item in scrape_aitoleipa():
-        print(f"- {item}")
+    The payload has a single "text" field with Markdown content, matching the
+    default "Post to a channel when a webhook request is received" Workflows
+    template, so no extra Adaptive Card authoring is needed on the Teams side.
+    """
+    today = today or datetime.datetime.now(HELSINKI_TZ).date()
+    weekday_essive = FINNISH_WEEKDAYS_ESSIVE[today.weekday()]
+    date_str = f"{today.day}.{today.month}"
+
+    lines = [f"Tänään {date_str} {weekday_essive} meillä on ylöjärvellä tarjolla lounaaksi:"]
+    for name, items in sections:
+        lines.append("")
+        lines.append(f"**{name}**")
+        if items:
+            lines.extend(f"- {item}" for item in items)
+        else:
+            lines.append("_Ei löytynyt lounaslistaa tänään – tarkista sivu manuaalisesti._")
+
+    return {"text": "\n".join(lines)}
+
+
+if __name__ == "__main__":
+    sections = [
+        ("Juustoportti", scrape_juustoportti()),
+        ("Aitoleipä", scrape_aitoleipa()),
+    ]
+    payload = format_teams_message(sections)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
