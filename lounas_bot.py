@@ -33,8 +33,12 @@ FINNISH_WEEKDAYS_ESSIVE = {
     6: "sunnuntaina",
 }
 
+FINNISH_WEEKDAYS_UPPER = {name.upper(): name for name in FINNISH_WEEKDAYS.values()}
+
 JUUSTOPORTTI_URL = "https://www.juustoportti.fi/liikenneasema/juustoportti-ylojarvi/"
 AITOLEIPA_URL = "https://aitoleipa.fi/toimipiste/ylojarvi/"
+PIRJONPAKARI_URL = "https://pirjonpakari.fi/leipomomyymalat-kahvilat/ylojarvi/"
+LEMPI_URL = "https://www.xn--yljrvenlempi-icb4w.fi/"
 
 REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (lounas-botti)"}
 
@@ -107,6 +111,78 @@ def scrape_aitoleipa(today: datetime.date | None = None) -> list[str]:
     return []
 
 
+def scrape_pirjonpakari(today: datetime.date | None = None) -> list[str]:
+    """Return today's Pirjon Pakari Ylöjärvi lunch items as a list of strings.
+
+    The list is "valid until further notice" (one soup per weekday, no dates),
+    so it's the same every week rather than scoped to a specific date.
+    """
+    weekday_name = _today_weekday_name(today)
+    weekday_values = set(FINNISH_WEEKDAYS.values())
+
+    response = requests.get(PIRJONPAKARI_URL, headers=REQUEST_HEADERS, timeout=15)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    container = soup.select_one("div.lunchlist")
+    if container is None:
+        return []
+
+    current_day = None
+    for p in container.select("p.wp-block-paragraph"):
+        text = p.get_text(strip=True)
+        if p.find("strong") is not None and text in weekday_values:
+            current_day = text
+            continue
+        if current_day == weekday_name:
+            return [text]
+        current_day = None
+
+    return []
+
+
+def scrape_lempi(today: datetime.date | None = None) -> list[str]:
+    """Return today's Lempi (lounasbuffet) items as a list of strings.
+
+    Lempi's page is a hand-formatted, multi-vendor layout with no clean
+    section boundaries, so this walks <strong> tags after the "LOUNAS
+    BUFFET" heading and stops at the first all-caps entry that isn't a
+    weekday name — that marks the end of the buffet listing and the start
+    of unrelated price-list/promo text.
+    """
+    weekday_name = _today_weekday_name(today)
+
+    response = requests.get(LEMPI_URL, headers=REQUEST_HEADERS, timeout=15)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    start = None
+    for p in soup.select("p.vendor-name"):
+        if "LOUNAS BUFFET" in p.get_text():
+            start = p
+            break
+    if start is None:
+        return []
+
+    items_by_day: dict[str, list[str]] = {}
+    current_day = None
+    for strong in start.find_all_next("strong"):
+        text = strong.get_text(strip=True)
+        if not text:
+            continue
+        key = text.rstrip(":").upper()
+        if key in FINNISH_WEEKDAYS_UPPER:
+            current_day = FINNISH_WEEKDAYS_UPPER[key]
+            items_by_day.setdefault(current_day, [])
+            continue
+        if text.isupper():
+            break
+        if current_day:
+            items_by_day[current_day].append(text)
+
+    return items_by_day.get(weekday_name, [])
+
+
 def format_teams_message(
     sections: list[tuple[str, list[str]]],
     today: datetime.date | None = None,
@@ -168,6 +244,8 @@ def main(now: datetime.datetime | None = None) -> None:
     sections = [
         ("Juustoportti", scrape_juustoportti(today)),
         ("Aitoleipä", scrape_aitoleipa(today)),
+        ("Pirjon Pakari", scrape_pirjonpakari(today)),
+        ("Lempi", scrape_lempi(today)),
     ]
     payload = format_teams_message(sections, today)
 
