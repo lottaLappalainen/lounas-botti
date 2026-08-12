@@ -139,12 +139,37 @@ def send_to_teams(payload: dict, webhook_url: str) -> None:
     response.raise_for_status()
 
 
-if __name__ == "__main__":
+def _should_send_now(now: datetime.datetime) -> bool:
+    """Guard against the GitHub Actions cron double-fire around DST changes.
+
+    The workflow schedules two cron triggers (one per Finnish UTC offset) so
+    that 10:30 local time is always covered. Only one of them actually lands
+    near 10:30 on a given day — this filters out the other one. It only
+    applies to the real GitHub Actions "schedule" trigger; manual runs
+    (workflow_dispatch) and local runs always send, so testing isn't tied to
+    the clock.
+    """
+    if os.environ.get("GITHUB_EVENT_NAME") != "schedule":
+        return True
+    if now.weekday() > 4:
+        return False
+    target = now.replace(hour=10, minute=30, second=0, microsecond=0)
+    return abs((now - target).total_seconds()) <= 10 * 60
+
+
+def main(now: datetime.datetime | None = None) -> None:
+    now = now or datetime.datetime.now(HELSINKI_TZ)
+
+    if not _should_send_now(now):
+        print(f"Skipping run — {now.isoformat()} is outside the weekday/10:30 send window.")
+        return
+
+    today = now.date()
     sections = [
-        ("Juustoportti", scrape_juustoportti()),
-        ("Aitoleipä", scrape_aitoleipa()),
+        ("Juustoportti", scrape_juustoportti(today)),
+        ("Aitoleipä", scrape_aitoleipa(today)),
     ]
-    payload = format_teams_message(sections)
+    payload = format_teams_message(sections, today)
 
     webhook_url = os.environ.get("TEAMS_WEBHOOK_URL")
     if webhook_url:
@@ -153,3 +178,7 @@ if __name__ == "__main__":
     else:
         print("TEAMS_WEBHOOK_URL not set — printing payload instead of sending:")
         print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
