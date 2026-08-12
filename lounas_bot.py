@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 
 import requests
 from bs4 import BeautifulSoup
@@ -132,10 +133,23 @@ def format_teams_message(
     return {"text": "\n".join(lines)}
 
 
+def send_to_teams(payload: dict, webhook_url: str) -> None:
+    """POST a formatted payload to a Teams Workflows webhook URL."""
+    response = requests.post(webhook_url, json=payload, timeout=15)
+    response.raise_for_status()
+
+
 if __name__ == "__main__":
     sections = [
         ("Juustoportti", scrape_juustoportti()),
         ("Aitoleipä", scrape_aitoleipa()),
     ]
     payload = format_teams_message(sections)
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    webhook_url = os.environ.get("TEAMS_WEBHOOK_URL")
+    if webhook_url:
+        send_to_teams(payload, webhook_url)
+        print("Sent to Teams.")
+    else:
+        print("TEAMS_WEBHOOK_URL not set — printing payload instead of sending:")
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
