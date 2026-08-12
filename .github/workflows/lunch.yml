@@ -1,0 +1,26 @@
+name: Lounaslista
+
+on:
+  schedule:
+    # Finnish local 10:30, covering both UTC offsets across the DST year.
+    # lounas_bot.py's own time-window check picks the correct one and
+    # skips the other, so this never double-posts.
+    - cron: "30 7 * * 1-5" # 10:30 EEST (summer)
+    - cron: "30 8 * * 1-5" # 10:30 EET (winter)
+  workflow_dispatch: {}
+
+jobs:
+  send-lunch-menu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: python lounas_bot.py
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
