@@ -1,0 +1,9 @@
+# Claude-specific / planning files — never commit these
+.claude-notes/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
